@@ -1,0 +1,6 @@
+[submodule "rust-lua"]
+	path = rust-lua
+	url = https://github.com/kballard/rust-lua.git
+[submodule "rust-irclib"]
+	path = rust-irclib
+	url = https://github.com/kballard/rust-irclib.git
