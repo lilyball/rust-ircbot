@@ -11,20 +11,20 @@ fn main() {
 
     opts.nick = "rustircbot";
     match irc::conn::connect(opts, handler) {
-        Ok(()) => println("Exiting..."),
+        Ok(()) => println!("Exiting..."),
         Err(err) => println!("Connection error: {}", err)
     }
 }
 
 fn handler(conn: &mut Conn, event: Event) {
     match event {
-        irc::conn::Connected => println("Connected"),
-        irc::conn::Disconnected => println("Disconnected"),
+        irc::conn::Connected => println!("Connected"),
+        irc::conn::Disconnected => println!("Disconnected"),
         irc::conn::LineReceived(line) => {
             let Line{command, args, prefix} = line;
             match command {
                 IRCCode(1) => {
-                    println("Logged in");
+                    println!("Logged in");
                     conn.join(bytes!("##rustircbot"));
                 }
                 IRCCmd(~"PRIVMSG") if prefix.is_some() && !args.is_empty() => {
