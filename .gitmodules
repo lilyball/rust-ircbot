@@ -4,3 +4,6 @@
 [submodule "rust-irclib"]
 	path = rust-irclib
 	url = https://github.com/kballard/rust-irclib.git
+[submodule "rust-toml"]
+	path = rust-toml
+	url = https://github.com/mneumann/rust-toml.git

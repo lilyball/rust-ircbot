@@ -3,6 +3,7 @@
 
 extern mod lua;
 extern mod irc;
+extern mod toml;
 
 use irc::conn::{Conn, Line, Event, IRCCmd, IRCCode, IRCAction};
 
