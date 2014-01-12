@@ -1,0 +1,26 @@
+[plugin] # Configuration for Lua plugins
+# Paths are relative to this config file
+dir = "plugins"
+
+[general] # General configuration
+reconnect = 5 # Number of seconds to wait before reconnecting; optional, default is 5
+#reconnect = -1 # Negative number means don't reconnect
+# NOTE: Not currently implemented
+reconnect_backoff = true # Increase time between reconnects if reconnect fails; optional, default is true
+# NOTE: Not currently implemented
+
+[general.defaults]
+nick = "rustbot" # Nickname; optional, defaults to "rustbot"
+user = "rustbot" # Username; optional, defaults to "rustbot"
+real = "Rust IRC Bot" # Real name; optional, defaults to "Rust IRC Bot"
+
+# List of servers to maintain connections to
+# NOTE: At the moment only the first server is used
+[[servers]]
+name = "Freenode" # Server name, used for plugin data; required
+server = "chat.freenode.net" # Server host; required
+port = 6667 # Server port; optional, defaults to 6667 (6697 with use_ssl = true)
+use_ssl = false # Use SSL; optional, defaults to false (NOTE: not currently implemented)
+#nick = "" # Nickname; optional, defaults to the value from [general.defaults]
+#user = "" # Username; optional, defaults to the value from [general.defaults]
+#real = "" # Real name; optional, defaults to the value from [general.defaults]

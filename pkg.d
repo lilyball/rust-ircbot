@@ -1,2 +1,2 @@
-ircbot: pkg.rs
+rustirc: pkg.rs config.rs config.example.toml
 
