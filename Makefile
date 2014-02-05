@@ -10,7 +10,6 @@ RUST_TOML_FILES := $(wildcard $(RUST_TOML_DIR)/*.rs)
 PKGNAME := $(shell rustc --crate-file-name pkg.rs)
 
 .PHONY: all clean test
-.DEFAULT: all
 
 all: $(PKGNAME)
 
