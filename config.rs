@@ -1,4 +1,5 @@
 use std::{io,os};
+use std::io::{IoError,FileNotFound};
 use extra::getopts::groups::{getopts, optflag, optopt, usage, OptGroup};
 use toml;
 
@@ -22,10 +23,19 @@ pub struct Server {
 }
 
 pub fn print_usage(opts: &[OptGroup]) {
-    writeln!(&mut io::stderr(), "{}", usage(format!("Usage: {} [OPTIONS]", os::args()[0]), opts));
+    let s = usage(format!("Usage: {} [OPTIONS]", os::args()[0]), opts);
+    let _ = writeln!(&mut io::stderr(), "{}", s);
 }
 
-pub fn parse_args() -> Result<Config,()> {
+pub enum Error {
+    ErrBadFlag,
+    ErrHelpFlag,
+    ErrWroteConfig,
+    ErrBadConfig,
+    ErrIO(IoError)
+}
+
+pub fn parse_args() -> Result<Config,Error> {
     let args = os::args();
 
     let opts = [
@@ -36,33 +46,38 @@ pub fn parse_args() -> Result<Config,()> {
     let matches = match getopts(args.tail(), opts) {
         Ok(m) => m,
         Err(f) => {
-            writeln!(&mut io::stderr(), "error: {}\n", f.to_err_msg());
+            let _ = writeln!(&mut io::stderr(), "error: {}\n", f.to_err_msg());
             print_usage(opts);
-            return Err(());
+            return Err(ErrBadFlag);
         }
     };
 
     if matches.opt_present("h") {
         print_usage(opts);
-        return Err(());
+        return Err(ErrHelpFlag);
     }
 
     let path = match matches.opt_str("c") {
         None => {
             let p = os::homedir().expect("can't find user's home dir").join(".rustirc");
             if !p.exists() {
-                println!("No config file ~/.rustirc exists, writing default file");
+                let _ = println!("No config file ~/.rustirc exists, writing default file");
                 let mut f = io::File::create(&p).unwrap(); // None should have raised
-                f.write(CONFIG_EXAMPLE.as_bytes());
-                return Err(());
+                match f.write(CONFIG_EXAMPLE.as_bytes()) {
+                    Err(e) => return Err(ErrIO(e)),
+                    Ok(_) => ()
+                }
+                return Err(ErrWroteConfig);
             }
             p
         }
         Some(p) => {
             let p = Path::new(p);
             if !p.exists() {
-                writeln!(&mut io::stderr(), "error: config file {} does not exist", p.display());
-                return Err(());
+                let _ = writeln!(&mut io::stderr(), "error: config file {} does not exist",
+                                 p.display());
+                let e = IoError { kind: FileNotFound, desc: "file not found", detail: None };
+                return Err(ErrIO(e));
             }
             p
         }
@@ -72,8 +87,9 @@ pub fn parse_args() -> Result<Config,()> {
 
     let plugin_dir = match root.lookup("plugin.dir").and_then(|v| v.get_str()) {
         None => {
-            writeln!(&mut io::stderr(), "error: required string config value plugin.dir missing");
-            return Err(());
+            let _ = writeln!(&mut io::stderr(),
+                             "error: required string config value plugin.dir missing");
+            return Err(ErrBadConfig);
         }
         Some(s) => s.clone()
     };
@@ -94,37 +110,39 @@ pub fn parse_args() -> Result<Config,()> {
     let mut servers = ~[];
     let server_list = match root.lookup_key("servers").and_then(|v| v.get_table_array()) {
         None => {
-            writeln!(&mut io::stderr(), "error: at least one server must be defined");
-            return Err(());
+            let _ = writeln!(&mut io::stderr(), "error: at least one server must be defined");
+            return Err(ErrBadConfig);
         }
         Some(ary) => ary.as_slice()
     };
     for elem in server_list.iter() {
         let name = match elem.lookup_key("name").and_then(|v| v.get_str()) {
             None => {
-                writeln!(&mut io::stderr(), "error: server entry missing required 'name' key");
-                return Err(());
+                let _ = writeln!(&mut io::stderr(),
+                                 "error: server entry missing required 'name' key");
+                return Err(ErrBadConfig);
             }
             Some(s) => s.clone()
         };
         let server = match elem.lookup_key("server").and_then(|v| v.get_str()) {
             None => {
-                writeln!(&mut io::stderr(), "error: server entry missing required 'server' key");
-                return Err(());
+                let _ = writeln!(&mut io::stderr(),
+                                 "error: server entry missing required 'server' key");
+                return Err(ErrBadConfig);
             }
             Some(s) => s.clone()
         };
         let use_ssl = elem.lookup_key("use_ssl").and_then(|v| v.get_bool()).unwrap_or(false);
         if use_ssl {
-            writeln!(&mut io::stderr(), "error: use_ssl is not currently implemented");
-            return Err(());
+            let _ = writeln!(&mut io::stderr(), "error: use_ssl is not currently implemented");
+            return Err(ErrBadConfig);
         }
         let default_port = if use_ssl { 6697 } else { 6667 };
         let port = match elem.lookup_key("port").and_then(|v| v.get_int()).unwrap_or(default_port)
                              .to_uint() {
             None => {
-                writeln!(&mut io::stderr(), "error: port is out of range");
-                return Err(());
+                let _ = writeln!(&mut io::stderr(), "error: port is out of range");
+                return Err(ErrBadConfig);
             }
             Some(p) => p
         };
