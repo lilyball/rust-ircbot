@@ -6,4 +6,4 @@
 	url = https://github.com/kballard/rust-irclib.git
 [submodule "rust-toml"]
 	path = rust-toml
-	url = https://github.com/mneumann/rust-toml.git
+	url = https://github.com/kballard/rust-toml.git

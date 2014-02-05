@@ -3,9 +3,7 @@ RUST_LUA := rust-lua/$(LIBNAME)
 
 RUST_IRC := rust-irclib/$(shell rustc --crate-file-name rust-irclib/lib.rs)
 
-RUST_TOML_DIR := rust-toml/src/toml/
-RUST_TOML := .build/$(shell rustc --crate-file-name $(RUST_TOML_DIR)/lib.rs)
-RUST_TOML_FILES := $(wildcard $(RUST_TOML_DIR)/*.rs)
+RUST_TOML := rust-toml/lib/$(shell rustc --crate-file-name rust-toml/src/toml/lib.rs)
 
 PKGNAME := $(shell rustc --crate-file-name pkg.rs)
 
@@ -14,26 +12,22 @@ PKGNAME := $(shell rustc --crate-file-name pkg.rs)
 all: $(PKGNAME)
 
 $(PKGNAME): $(RUST_LUA) $(RUST_IRC) $(RUST_TOML)
-	rustc --dep-info pkg.d -L rust-lua -L rust-irclib -L .build pkg.rs
+	rustc --dep-info pkg.d -L rust-lua -L rust-irclib -L rust-toml/lib pkg.rs
 
 include pkg.d
 
 define REBUILD_DIR
 .PHONY: $(1)
 $(1):
-	$(MAKE) -C $(dir $(1))
+	$(MAKE) -C $(2) lib
 endef
 
-$(foreach lib,$(RUST_LUA) $(RUST_IRC),\
-  $(if $(shell $(MAKE) -C $(dir $(lib)) -q || echo no),\
-       $(eval $(call REBUILD_DIR,$(lib)))))
-
-$(RUST_TOML): $(RUST_TOML_FILES)
-	mkdir -p .build
-	rustc -O --out-dir .build --rlib $(RUST_TOML_DIR)/lib.rs
+$(foreach lib,$(RUST_LUA) $(RUST_IRC) $(RUST_TOML),\
+  $(if $(shell $(MAKE) -C $(firstword $(subst /, ,$(lib))) -q lib || echo no),\
+       $(eval $(call REBUILD_DIR,$(lib),$(firstword $(subst /, ,$(lib)))))))
 
 clean:
 	-rm -f $(PKGNAME)
-	-rm -rf .build
 	-$(MAKE) -C $(dir $(RUST_LUA)) clean
 	-$(MAKE) -C $(dir $(RUST_IRC)) clean
+	-$(MAKE) -C $(firstword $(subst /, ,$(RUST_TOML))) clean
