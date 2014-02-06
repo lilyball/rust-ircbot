@@ -83,7 +83,11 @@ pub fn parse_args() -> Result<Config,Error> {
         }
     };
 
-    let root = toml::parse_from_path(&path);
+    let root = match toml::parse_from_path(&path) {
+        Ok(v) => v,
+        Err(toml::ParseError) => return Err(ErrBadConfig),
+        Err(toml::IOError(e)) => return Err(ErrIO(e))
+    };
 
     let plugin_dir = match root.lookup("plugin.dir").and_then(|v| v.get_str()) {
         None => {
