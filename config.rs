@@ -1,6 +1,6 @@
 use std::{io,os};
 use std::io::{IoError,FileNotFound};
-use extra::getopts::groups::{getopts, optflag, optopt, usage, OptGroup};
+use getopts::{getopts, optflag, optopt, usage, OptGroup};
 use toml;
 
 static CONFIG_EXAMPLE: &'static str = include_str!("config.example.toml");

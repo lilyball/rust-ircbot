@@ -5,6 +5,7 @@ extern mod extra;
 extern mod lua;
 extern mod irc;
 extern mod toml;
+extern mod getopts;
 
 use std::os;
 use irc::conn::{Conn, Line, Event, IRCCmd, IRCCode, IRCAction};
