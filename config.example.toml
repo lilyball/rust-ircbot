@@ -24,3 +24,9 @@ use_ssl = false # Use SSL; optional, defaults to false (NOTE: not currently impl
 #nick = "" # Nickname; optional, defaults to the value from [general.defaults]
 #user = "" # Username; optional, defaults to the value from [general.defaults]
 #real = "" # Real name; optional, defaults to the value from [general.defaults]
+# autojoin is a list of channels to automatically join on connection.
+# If a channel requires a password, separate it from the channel name with a comma, e.g.
+# autojoin = ["#channelname,password"]
+# No effort is made to rejoin channels when kicked. That functionality must be provided
+# via a plugin.
+#autojoin = []

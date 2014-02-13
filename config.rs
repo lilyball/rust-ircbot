@@ -19,7 +19,13 @@ pub struct Server {
     use_ssl: bool,
     nick: ~str,
     user: ~str,
-    real: ~str
+    real: ~str,
+    autojoin: ~[Channel]
+}
+
+pub struct Channel {
+    name: ~str,
+    password: Option<~str>
 }
 
 pub fn print_usage(opts: &[OptGroup]) {
@@ -156,8 +162,27 @@ pub fn parse_args() -> Result<Config,Error> {
                        .unwrap_or_else(|| default_user.clone());
         let real = elem.lookup_key("real").and_then(|v| v.get_str()).map(|s| s.clone())
                        .unwrap_or_else(|| default_real.clone());
+        let mut channels = ~[];
+        match elem.lookup_key("autojoin").and_then(|v| v.get_vec()) {
+            None => (),
+            Some(v) => {
+                for val in v.iter() {
+                    let s = match val.get_str() {
+                        None => continue,
+                        Some(s) => s
+                    };
+                    let (name, pass) = match s.find(',') {
+                        None => (s.to_owned(), None),
+                        Some(idx) => {
+                            (s.slice_to(idx).to_owned(), Some(s.slice_from(idx+1).to_owned()))
+                        }
+                    };
+                    channels.push(Channel{ name: name, password: pass });
+                }
+            }
+        }
         servers.push(Server{ name: name, host: server, port: port, use_ssl: use_ssl,
-                             nick: nick, user: user, real: real });
+                             nick: nick, user: user, real: real, autojoin: channels });
     }
 
     Ok(Config{
