@@ -9,6 +9,7 @@ extern mod getopts;
 
 use std::os;
 use std::io::signal::{Listener, Interrupt};
+use std::task;
 use irc::conn::{Conn, Line, Event, IRCCmd, IRCCode, IRCAction};
 
 pub mod config;
@@ -46,7 +47,10 @@ fn main() {
     let mut listener = Listener::new();
     if listener.register(Interrupt).is_ok() {
         let cmd_chan2 = cmd_chan.clone();
-        spawn(proc() {
+        let mut t = task::task();
+        t.unwatched();
+        t.name("signal handler");
+        t.spawn(proc() {
             let mut listener = listener;
             let cmd_chan = cmd_chan2;
             loop {
@@ -73,6 +77,9 @@ fn main() {
         Ok(()) => println!("Exiting..."),
         Err(err) => println!("Connection error: {}", err)
     }
+
+    // some task is keeping us alive, so kill it
+    unsafe { ::std::libc::exit(0); }
 }
 
 fn handler(conn: &mut Conn, event: Event, autojoin: &[config::Channel]) {
