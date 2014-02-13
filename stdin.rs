@@ -31,6 +31,7 @@ fn parse_line(line: &str) -> Option<Cmd> {
     if !line.starts_with("/") {
         return None;
     }
+    let line = line.trim_right_chars(& &['\r', '\n']);
     let mut iter = line.slice_from(1).splitn(' ', 1);
     let cmd = iter.next().unwrap();
     let line = iter.next().unwrap_or("");
