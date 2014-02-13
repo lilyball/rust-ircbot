@@ -8,12 +8,14 @@ extern mod toml;
 extern mod getopts;
 
 use std::os;
+use std::io::signal::{Listener, Interrupt};
 use irc::conn::{Conn, Line, Event, IRCCmd, IRCCode, IRCAction};
 
-mod config;
+pub mod config;
+pub mod stdin;
 
 fn main() {
-    let _conf = match config::parse_args() {
+    let conf = match config::parse_args() {
         Ok(c) => c,
         Err(_) => {
             os::set_exit_status(2);
@@ -21,16 +23,59 @@ fn main() {
         }
     };
 
-    let mut opts = irc::conn::Options::new("chat.freenode.net", irc::conn::DefaultPort);
+    if conf.servers.is_empty() {
+        println!("No servers are specified");
+        println!("Exiting...");
+        return;
+    }
 
-    opts.nick = "rustircbot";
-    match irc::conn::connect(opts, handler) {
+    // TODO: eventually we should support multiple servers
+    let server = &conf.servers[0];
+    let mut opts = irc::conn::Options::new(server.host, server.port);
+    opts.nick = server.nick.as_slice();
+    opts.user = server.user.as_slice();
+    opts.real = server.real.as_slice();
+
+    let (cmd_port, cmd_chan) = Chan::new();
+    opts.commands = Some(cmd_port);
+
+    // read stdin to control the bot
+    stdin::spawn_stdin_listener(cmd_chan.clone());
+
+    // intercept ^C and use it to quit gracefully
+    let mut listener = Listener::new();
+    if listener.register(Interrupt).is_ok() {
+        let cmd_chan2 = cmd_chan.clone();
+        spawn(proc() {
+            let mut listener = listener;
+            let cmd_chan = cmd_chan2;
+            loop {
+                match listener.port.recv() {
+                    Interrupt => {
+                        cmd_chan.try_send(proc(conn: &mut Conn) {
+                            conn.quit([]);
+                        });
+                        listener.unregister(Interrupt);
+                        break;
+                    }
+                    _ => ()
+                }
+            }
+        });
+    } else {
+        warn!("Couldn't register ^C signal handler");
+    }
+
+    let autojoin = server.autojoin.as_slice();
+
+    println!("Connecting to {}...", opts.host);
+    match irc::conn::connect(opts, |conn, event| handler(conn, event, autojoin)) {
         Ok(()) => println!("Exiting..."),
         Err(err) => println!("Connection error: {}", err)
     }
 }
 
-fn handler(conn: &mut Conn, event: Event) {
+fn handler(conn: &mut Conn, event: Event, autojoin: &[config::Channel]) {
     match event {
         irc::conn::Connected => println!("Connected"),
         irc::conn::Disconnected => println!("Disconnected"),
@@ -39,7 +84,10 @@ fn handler(conn: &mut Conn, event: Event) {
             match command {
                 IRCCode(1) => {
                     println!("Logged in");
-                    conn.join(bytes!("##rustircbot"));
+                    for chan in autojoin.iter() {
+                        println!("Joining {}", chan.name);
+                        conn.join(chan.name.as_bytes(), []);
+                    }
                 }
                 IRCCmd(~"PRIVMSG") if prefix.is_some() && !args.is_empty() => {
 

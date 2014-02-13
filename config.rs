@@ -5,6 +5,7 @@ use toml;
 
 static CONFIG_EXAMPLE: &'static str = include_str!("config.example.toml");
 
+#[deriving(Clone)]
 pub struct Config {
     plugin_dir: ~str,
     reconnect_time: Option<uint>,
@@ -12,10 +13,11 @@ pub struct Config {
     servers: ~[Server]
 }
 
+#[deriving(Clone)]
 pub struct Server {
     name: ~str,
     host: ~str,
-    port: uint,
+    port: u16,
     use_ssl: bool,
     nick: ~str,
     user: ~str,
@@ -23,6 +25,7 @@ pub struct Server {
     autojoin: ~[Channel]
 }
 
+#[deriving(Clone)]
 pub struct Channel {
     name: ~str,
     password: Option<~str>
@@ -149,7 +152,7 @@ pub fn parse_args() -> Result<Config,Error> {
         }
         let default_port = if use_ssl { 6697 } else { 6667 };
         let port = match elem.lookup_key("port").and_then(|v| v.get_int()).unwrap_or(default_port)
-                             .to_uint() {
+                             .to_u16() {
             None => {
                 let _ = writeln!(&mut io::stderr(), "error: port is out of range");
                 return Err(ErrBadConfig);
