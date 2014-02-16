@@ -1,11 +1,11 @@
 #[crate_id="github.com/kballard/rust-ircbot#rustirc:0.1"];
 #[crate_type="bin"];
 
-extern mod extra;
-extern mod lua;
-extern mod irc;
-extern mod toml;
-extern mod getopts;
+extern crate extra;
+extern crate lua;
+extern crate irc;
+extern crate toml;
+extern crate getopts;
 
 use std::os;
 use std::io::signal::{Listener, Interrupt};
