@@ -1,5 +1,5 @@
-use std::{io,os};
-use std::io::{IoError,FileNotFound};
+use std::{io, os};
+use std::io::{IoError, FileNotFound, PathAlreadyExists};
 use getopts::{getopts, optflag, optopt, usage, OptGroup};
 use toml;
 
@@ -7,6 +7,7 @@ static CONFIG_EXAMPLE: &'static str = include_str!("config.example.toml");
 
 #[deriving(Clone)]
 pub struct Config {
+    config_dir: Path, // path for the dir where the config file resides
     plugin_dir: ~str,
     reconnect_time: Option<uint>,
     reconnect_backoff: bool,
@@ -49,7 +50,7 @@ pub fn parse_args() -> Result<Config,Error> {
 
     let opts = [
         optflag("h", "help", "Displays this help"),
-        optopt("c", "config", "Path for the config file, defaults to ~/.rustirc", "file")
+        optopt("c", "config", "Path for the config file, defaults to ~/.rustirc/config", "file")
     ];
 
     let matches = match getopts(args.tail(), opts) {
@@ -68,10 +69,18 @@ pub fn parse_args() -> Result<Config,Error> {
 
     let path = match matches.opt_str("c") {
         None => {
-            let p = os::homedir().expect("can't find user's home dir").join(".rustirc");
+            let p = os::homedir().expect("can't find user's home dir").join(".rustirc/config");
             if !p.exists() {
-                let _ = println!("No config file ~/.rustirc exists, writing default file");
-                let mut f = io::File::create(&p).unwrap(); // None should have raised
+                let _ = println!("No config file ~/.rustirc/config exists, writing default file");
+                match io::fs::mkdir(&p.dir_path(), io::UserDir) {
+                    Ok(()) => (),
+                    Err(IoError { kind: PathAlreadyExists, .. }) => (),
+                    Err(e) => return Err(ErrIO(e))
+                }
+                let mut f = match io::File::create(&p) {
+                    Ok(f) => f,
+                    Err(e) => return Err(ErrIO(e))
+                };
                 match f.write(CONFIG_EXAMPLE.as_bytes()) {
                     Err(e) => return Err(ErrIO(e)),
                     Ok(_) => ()
@@ -81,7 +90,7 @@ pub fn parse_args() -> Result<Config,Error> {
             p
         }
         Some(p) => {
-            let p = Path::new(p);
+            let p = os::make_absolute(&Path::new(p));
             if !p.exists() {
                 let _ = writeln!(&mut io::stderr(), "error: config file {} does not exist",
                                  p.display());
@@ -189,6 +198,7 @@ pub fn parse_args() -> Result<Config,Error> {
     }
 
     Ok(Config{
+        config_dir: path.dir_path(),
         plugin_dir: plugin_dir,
         reconnect_time: reconnect,
         reconnect_backoff: backoff,
