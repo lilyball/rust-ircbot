@@ -6,11 +6,14 @@ extern crate lua;
 extern crate irc;
 extern crate toml;
 extern crate getopts;
+extern crate sync;
 
 use std::os;
+use std::io;
 use std::io::signal::{Listener, Interrupt};
 use std::task;
-use irc::conn::{Conn, Line, Event, IRCCmd, IRCCode, IRCAction};
+use irc::conn;
+use irc::conn::{Conn, Line, Event, IRCCmd, IRCCode, IRCAction, Cmd};
 
 pub mod config;
 pub mod stdin;
@@ -30,6 +33,71 @@ fn main() {
         return;
     }
 
+    // use a MutexArc to hold the channel for stdin
+    // This way we can swap it out on reconnections and stdin will work
+    let arc = sync::MutexArc::new(None);
+
+    // spawn the stdin listener now to control the bot
+    stdin::spawn_stdin_listener(arc.clone());
+
+    // create the reconnect timer, later used to sleep between connections
+    let mut recon_timer = io::timer::Timer::new().ok()
+                          .expect("could not create reconnection timer");
+    // reconnect time, used for exponential backoff
+    let mut recon_delay = conf.reconnect_time;
+
+    // connect in a loop, based on the reconnection config
+    println!("Connecting...");
+    loop {
+        match connect(&conf, &arc) {
+            Ok(()) => {
+                // bot quit gracefully
+                println!("Exiting...");
+                break;
+            }
+            Err(err) => {
+                // some error occurred
+                println!("Connection error: {}", err);
+                match err {
+                    conn::ErrIO(_) => {
+                        // reset the reconnect delay, we successfully connected
+                        recon_delay = conf.reconnect_time;
+                    }
+                    _ => ()
+                }
+            }
+        }
+
+        unsafe { arc.unsafe_access(|c| *c = None); }
+
+        match recon_delay {
+            None => break,
+            Some(mut secs) => {
+                recon_timer.sleep(secs as u64 * 1000);
+                if conf.reconnect_backoff {
+                    // ad-hoc backoff
+                    secs = match secs {
+                        0   .. 4   => 5,
+                        5   .. 9   => 10,
+                        10  .. 19  => 20,
+                        20  .. 29  => 30,
+                        30  .. 59  => 60,
+                        61  .. 149 => 150,
+                        151 .. 299 => 300,
+                        s => s + 60
+                    };
+                    recon_delay = Some(secs);
+                }
+            }
+        }
+        println!("Reconnecting...");
+    }
+
+    // some task is keeping us alive, so kill it
+    unsafe { ::std::libc::exit(0); }
+}
+
+fn connect(conf: &config::Config, arc: &sync::MutexArc<Option<Chan<Cmd>>>) -> conn::Result {
     // TODO: eventually we should support multiple servers
     let server = &conf.servers[0];
     let mut opts = irc::conn::Options::new(server.host, server.port);
@@ -40,8 +108,8 @@ fn main() {
     let (cmd_port, cmd_chan) = Chan::new();
     opts.commands = Some(cmd_port);
 
-    // read stdin to control the bot
-    stdin::spawn_stdin_listener(cmd_chan.clone());
+    // give stdin the new channel
+    unsafe { arc.unsafe_access(|c| *c = Some(cmd_chan.clone())); }
 
     // intercept ^C and use it to quit gracefully
     let mut listener = Listener::new();
@@ -73,13 +141,7 @@ fn main() {
     let autojoin = server.autojoin.as_slice();
 
     println!("Connecting to {}...", opts.host);
-    match irc::conn::connect(opts, |conn, event| handler(conn, event, autojoin)) {
-        Ok(()) => println!("Exiting..."),
-        Err(err) => println!("Connection error: {}", err)
-    }
-
-    // some task is keeping us alive, so kill it
-    unsafe { ::std::libc::exit(0); }
+    irc::conn::connect(opts, |conn, event| handler(conn, event, autojoin))
 }
 
 fn handler(conn: &mut Conn, event: Event, autojoin: &[config::Channel]) {

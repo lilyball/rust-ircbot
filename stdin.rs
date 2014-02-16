@@ -1,27 +1,34 @@
 /// Handle stdin commands
 
 use std::{io,task};
-use irc::conn::Conn;
-
-type Cmd = proc(&mut Conn);
+use irc::conn::{Conn, Cmd};
+use sync::MutexArc;
 
 /// Spawns a new (unwatched) task to handle stdin
-pub fn spawn_stdin_listener(chan: Chan<Cmd>) {
+pub fn spawn_stdin_listener(arc: MutexArc<Option<Chan<Cmd>>>) {
     let mut t = task::task();
     t.unwatched();
     t.name("stdin listener");
     t.spawn(proc() {
-        handle_stdin(chan);
+        handle_stdin(arc);
     });
 }
 
-fn handle_stdin(chan: Chan<Cmd>) {
+fn handle_stdin(arc: MutexArc<Option<Chan<Cmd>>>) {
     let mut stdin = io::BufferedReader::new(io::stdin());
     for line in stdin.lines() {
         match parse_line(line) {
             None => (),
-            Some(cmd) => if !chan.try_send(cmd) {
-                break;
+            Some(cmd) => {
+                let mut cmd = Some(cmd);
+                if !unsafe { arc.unsafe_access(|chan| {
+                    match *chan {
+                        None => true,
+                        Some(ref c) => c.try_send(cmd.take_unwrap())
+                    }
+                })} {
+                    println!("Error: no active connection");
+                }
             }
         }
     }

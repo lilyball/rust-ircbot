@@ -5,9 +5,7 @@ dir = "plugins"
 [general] # General configuration
 reconnect = 5 # Number of seconds to wait before reconnecting; optional, default is 5
 #reconnect = -1 # Negative number means don't reconnect
-# NOTE: Not currently implemented
 reconnect_backoff = true # Increase time between reconnects if reconnect fails; optional, default is true
-# NOTE: Not currently implemented
 
 [general.defaults]
 nick = "rustbot" # Nickname; optional, defaults to "rustbot"
