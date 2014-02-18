@@ -7,12 +7,14 @@ RUST_TOML := rust-toml/lib/$(shell rustc --crate-file-name rust-toml/src/toml/li
 
 PKGNAME := $(shell rustc --crate-file-name pkg.rs)
 
+RUSTC_FLAGS := $(if $(DEBUG),-g)
+
 .PHONY: all clean test
 
 all: $(PKGNAME)
 
 $(PKGNAME): $(RUST_LUA) $(RUST_IRC) $(RUST_TOML)
-	rustc --dep-info pkg.d -L rust-lua -L rust-irclib -L rust-toml/lib pkg.rs
+	rustc $(RUSTC_FLAGS) --dep-info pkg.d -L rust-lua -L rust-irclib -L rust-toml/lib pkg.rs
 
 include pkg.d
 
