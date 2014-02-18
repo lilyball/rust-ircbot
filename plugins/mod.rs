@@ -4,6 +4,8 @@ use lua;
 use config;
 use std::{io, libc, str};
 
+static ERROR_HANDLER: &'static str = "error_handler";
+
 /// Manages the Lua state for plugins
 pub struct PluginManager {
     priv state: lua::State
@@ -15,14 +17,25 @@ impl PluginManager {
         let mut L = lua::State::new();
         L.openlibs();
 
+        // create the error function and store it in the registry
+        match L.loadstring("local msg = ...; return debug.traceback(msg, 2)") {
+            Ok(()) => (),
+            Err(e) => {
+                fail!("Error creating error handler: {}: {}", e, L.describe(-1))
+            }
+        }
+        L.setfield(lua::REGISTRYINDEX, ERROR_HANDLER);
+
         // set up our packages for loading
+        L.getfield(lua::REGISTRYINDEX, ERROR_HANDLER);
         L.pushcfunction(lua_setup_packages);
-        match L.pcall(0, 0, 0) {
+        match L.pcall(0, 0, -2) {
             Ok(()) => (),
             Err(e) => {
                 fail!("Error setting up lua packages: {}: {}", e, L.describe(-1));
             }
         }
+        L.pop(1); // pop error handler
 
         match io::fs::readdir(&conf.plugin_dir) {
             Err(e) => {
@@ -38,27 +51,29 @@ impl PluginManager {
                     if path.extension() == Some(bytes!("lua")) {
                         // found a plugin
                         debug!("Loading plugin {}", path.filename_display());
+                        L.getfield(lua::REGISTRYINDEX, ERROR_HANDLER);
                         match L.loadfile(Some(path)) {
                             Ok(()) => (),
                             Err(_) => {
                                 println!("Error loading plugin {}: {}", path.filename_display(),
                                          L.describe(-1));
-                                L.pop(1);
+                                L.pop(2); // pop error, error handler
                                 continue;
                             }
                         }
                         // call the plugin's chunk with a single argument, the name of the plugin
                         let name = str::from_utf8_lossy(path.filestem().unwrap());
                         L.pushstring(name.as_slice());
-                        match L.pcall(1, 0, 0) {
+                        match L.pcall(1, 0, -3) {
                             Ok(()) => (),
                             Err(e) => {
                                 println!("Error running plugin {}: {}: {}",
                                          path.filename_display(), e, L.describe(-1));
-                                L.pop(1);
+                                L.pop(2); // pop error, error handler
                                 continue;
                             }
                         }
+                        L.pop(1); // pop error handler
                     }
                 }
             }
@@ -69,15 +84,17 @@ impl PluginManager {
 
     /// Dispatches an IRC event
     pub fn dispatch_irc_event(&mut self, event: &irc::conn::Event) {
+        self.state.getfield(lua::REGISTRYINDEX, ERROR_HANDLER);
         self.state.pushcfunction(irc::lua_dispatch_event);
         self.state.pushlightuserdata(event as *irc::conn::Event as *mut libc::c_void);
-        match self.state.pcall(1, 0, 0) {
+        match self.state.pcall(1, 0, -3) {
             Ok(()) => (),
             Err(e) => {
                 println!("Error dispatching IRC event: {}: {}", e, self.state.describe(-1));
                 self.state.pop(1);
             }
         }
+        self.state.pop(1);
     }
 }
 
