@@ -13,7 +13,7 @@ use std::io;
 use std::io::signal::{Listener, Interrupt};
 use std::task;
 use irc::conn;
-use irc::conn::{Conn, Line, Event, IRCCmd, IRCCode, IRCAction, Cmd};
+use irc::conn::{Conn, Line, Event, IRCCode, Cmd};
 
 pub mod config;
 pub mod stdin;
@@ -150,9 +150,9 @@ fn handler(conn: &mut Conn, event: Event, autojoin: &[config::Channel],
     match event {
         irc::conn::Connected => println!("Connected"),
         irc::conn::Disconnected => println!("Disconnected"),
-        irc::conn::LineReceived(line) => {
-            let Line{command, args, prefix} = line;
-            match command {
+        irc::conn::LineReceived(ref line) => {
+            let Line{ref command, args: _, prefix: _} = *line;
+            match *command {
                 IRCCode(1) => {
                     println!("Logged in");
                     for chan in autojoin.iter() {
@@ -160,15 +160,9 @@ fn handler(conn: &mut Conn, event: Event, autojoin: &[config::Channel],
                         conn.join(chan.name.as_bytes(), []);
                     }
                 }
-                IRCCmd(~"PRIVMSG") if prefix.is_some() && !args.is_empty() => {
-
-                }
-                IRCAction(_dst) => {
-                    if prefix.is_none() || args.is_empty() { return; }
-
-                }
                 _ => ()
             }
         }
     }
+    plugins.dispatch_irc_event(&event);
 }

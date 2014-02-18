@@ -1,3 +1,5 @@
+//! Plugin manager for Lua plugins
+
 use lua;
 use config;
 use std::{io, libc, str};
@@ -63,6 +65,19 @@ impl PluginManager {
         }
 
         PluginManager { state: L }
+    }
+
+    /// Dispatches an IRC event
+    pub fn dispatch_irc_event(&mut self, event: &irc::conn::Event) {
+        self.state.pushcfunction(irc::lua_dispatch_event);
+        self.state.pushlightuserdata(event as *irc::conn::Event as *mut libc::c_void);
+        match self.state.pcall(1, 0, 0) {
+            Ok(()) => (),
+            Err(_) => {
+                println!("Error dispatching IRC event: {}", self.state.describe(-1));
+                self.state.pop(1);
+            }
+        }
     }
 }
 
