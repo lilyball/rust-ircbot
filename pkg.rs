@@ -70,7 +70,7 @@ fn main() {
             }
         }
 
-        unsafe { arc.unsafe_access(|c| *c = None); }
+        arc.access(|c| *c = None);
 
         match recon_delay {
             None => break,
@@ -111,7 +111,7 @@ fn connect(conf: &config::Config, arc: &sync::MutexArc<Option<Chan<Cmd>>>) -> co
     opts.commands = Some(cmd_port);
 
     // give stdin the new channel
-    unsafe { arc.unsafe_access(|c| *c = Some(cmd_chan.clone())); }
+    arc.access(|c| *c = Some(cmd_chan.clone()));
 
     // intercept ^C and use it to quit gracefully
     let mut listener = Listener::new();

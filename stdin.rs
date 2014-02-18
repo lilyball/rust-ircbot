@@ -18,12 +18,12 @@ fn handle_stdin(arc: MutexArc<Option<Chan<Cmd>>>) {
             None => (),
             Some(cmd) => {
                 let mut cmd = Some(cmd);
-                if !unsafe { arc.unsafe_access(|chan| {
+                if !arc.access(|chan| {
                     match *chan {
                         None => true,
                         Some(ref c) => c.try_send(cmd.take_unwrap())
                     }
-                })} {
+                }) {
                     println!("Error: no active connection");
                 }
             }
