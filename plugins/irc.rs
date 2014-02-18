@@ -286,10 +286,8 @@ extern "C" fn lua_addhandler(L: *mut lua::raw::lua_State) -> libc::c_int {
     }
     // array is stack entry 4
 
-    L.objlen(4); // get table length
-    let len = L.tointeger(5) + 1;
-    L.pop(1);
-    L.pushinteger(len);
+    let len = L.objlen(4); // get table length
+    L.pushinteger(len as int + 1);
     L.pushvalue(2); // copy function to top
     L.settable(4); // set ary[len+1]=func
     // and return
