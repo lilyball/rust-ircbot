@@ -164,5 +164,5 @@ fn handler(conn: &mut Conn, event: Event, autojoin: &[config::Channel],
             }
         }
     }
-    plugins.dispatch_irc_event(&event);
+    plugins.dispatch_irc_event(conn, &event);
 }

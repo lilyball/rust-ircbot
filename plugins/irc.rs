@@ -252,6 +252,26 @@ unsafe fn getconn(L: &mut lua::State) -> &'static mut Conn<'static> {
     &mut *ptr
 }
 
+pub fn activate_conn(L: &mut lua::State, conn: &mut Conn) {
+    L.pushlightuserdata(lua_require as *mut libc::c_void);
+    L.gettable(lua::REGISTRYINDEX);
+    let ptr = L.touserdata(-1) as *mut *mut Conn;
+    if ptr.is_null() {
+        L.errorstr("could not retrieve connection information");
+    }
+    unsafe { *ptr = conn as *mut Conn };
+}
+
+pub fn deactivate_conn(L: &mut lua::State) {
+    L.pushlightuserdata(lua_require as *mut libc::c_void);
+    L.gettable(lua::REGISTRYINDEX);
+    let ptr = L.touserdata(-1) as *mut *mut Conn;
+    if ptr.is_null() {
+        L.errorstr("could not retrieve connection information");
+    }
+    unsafe { *ptr = ptr::mut_null() };
+}
+
 extern "C" fn lua_addhandler(L: *mut lua::raw::lua_State) -> libc::c_int {
     let mut L = unsafe { lua::State::from_lua_State(L) };
 

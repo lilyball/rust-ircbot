@@ -83,7 +83,8 @@ impl PluginManager {
     }
 
     /// Dispatches an IRC event
-    pub fn dispatch_irc_event(&mut self, event: &irc::conn::Event) {
+    pub fn dispatch_irc_event(&mut self, conn: &mut irc::conn::Conn, event: &irc::conn::Event) {
+        irc::activate_conn(&mut self.state, conn);
         self.state.getfield(lua::REGISTRYINDEX, ERROR_HANDLER);
         self.state.pushcfunction(irc::lua_dispatch_event);
         self.state.pushlightuserdata(event as *irc::conn::Event as *mut libc::c_void);
@@ -95,6 +96,7 @@ impl PluginManager {
             }
         }
         self.state.pop(1);
+        irc::deactivate_conn(&mut self.state);
     }
 }
 
