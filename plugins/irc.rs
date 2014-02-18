@@ -227,8 +227,8 @@ pub extern "C" fn lua_dispatch_event(L: *mut lua::raw::lua_State) -> libc::c_int
         }
         match L.pcall(nargs, 0, 0) {
             Ok(()) => (),
-            Err(_) => {
-                println!("Error dispatching IRC event: {}", L.describe(-1));
+            Err(e) => {
+                println!("Error dispatching IRC event: {}: {}", e, L.describe(-1));
                 L.pop(1);
             }
         }

@@ -19,8 +19,8 @@ impl PluginManager {
         L.pushcfunction(lua_setup_packages);
         match L.pcall(0, 0, 0) {
             Ok(()) => (),
-            Err(_) => {
-                fail!("Error setting up lua packages: {}", L.describe(-1));
+            Err(e) => {
+                fail!("Error setting up lua packages: {}: {}", e, L.describe(-1));
             }
         }
 
@@ -52,9 +52,9 @@ impl PluginManager {
                         L.pushstring(name.as_slice());
                         match L.pcall(1, 0, 0) {
                             Ok(()) => (),
-                            Err(_) => {
-                                println!("Error running plugin {}: {}", path.filename_display(),
-                                         L.describe(-1));
+                            Err(e) => {
+                                println!("Error running plugin {}: {}: {}",
+                                         path.filename_display(), e, L.describe(-1));
                                 L.pop(1);
                                 continue;
                             }
@@ -73,8 +73,8 @@ impl PluginManager {
         self.state.pushlightuserdata(event as *irc::conn::Event as *mut libc::c_void);
         match self.state.pcall(1, 0, 0) {
             Ok(()) => (),
-            Err(_) => {
-                println!("Error dispatching IRC event: {}", self.state.describe(-1));
+            Err(e) => {
+                println!("Error dispatching IRC event: {}: {}", e, self.state.describe(-1));
                 self.state.pop(1);
             }
         }
@@ -85,12 +85,13 @@ extern "C" fn lua_setup_packages(L: *mut lua::raw::lua_State) -> libc::c_int {
     let mut L = unsafe { lua::State::from_lua_State(L) };
 
     // insert our package loaders into package.preload
-
-    // irc
     L.getglobal("package");
     L.getfield(-1, "preload");
+
+    // irc
     L.pushcfunction(irc::lua_require);
-    L.setfield(-1, "irc");
+    L.setfield(-2, "irc");
+
     L.pop(2);
     0
 }
