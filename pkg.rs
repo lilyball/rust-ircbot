@@ -18,6 +18,8 @@ use irc::conn::{Conn, Line, Event, IRCCmd, IRCCode, IRCAction, Cmd};
 pub mod config;
 pub mod stdin;
 
+mod plugins;
+
 fn main() {
     let conf = match config::parse_args() {
         Ok(c) => c,
@@ -135,13 +137,16 @@ fn connect(conf: &config::Config, arc: &sync::MutexArc<Option<Chan<Cmd>>>) -> co
         warn!("Couldn't register ^C signal handler");
     }
 
+    let mut plugins = plugins::PluginManager::new(conf);
+
     let autojoin = server.autojoin.as_slice();
 
     println!("Connecting to {}...", opts.host);
-    irc::conn::connect(opts, |conn, event| handler(conn, event, autojoin))
+    irc::conn::connect(opts, |conn, event| handler(conn, event, autojoin, &mut plugins))
 }
 
-fn handler(conn: &mut Conn, event: Event, autojoin: &[config::Channel]) {
+fn handler(conn: &mut Conn, event: Event, autojoin: &[config::Channel],
+           plugins: &mut plugins::PluginManager) {
     match event {
         irc::conn::Connected => println!("Connected"),
         irc::conn::Disconnected => println!("Disconnected"),

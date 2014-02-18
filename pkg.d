@@ -1,2 +1,2 @@
-rustirc: pkg.rs config.rs stdin.rs config.example.toml
+rustirc: pkg.rs config.rs stdin.rs plugins/mod.rs plugins/irc.rs config.example.toml
 

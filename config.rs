@@ -8,7 +8,7 @@ static CONFIG_EXAMPLE: &'static str = include_str!("config.example.toml");
 #[deriving(Clone)]
 pub struct Config {
     config_dir: Path, // path for the dir where the config file resides
-    plugin_dir: ~str,
+    plugin_dir: Path, // path for the dir where plugins exist
     reconnect_time: Option<uint>,
     reconnect_backoff: bool,
     servers: ~[Server]
@@ -197,8 +197,10 @@ pub fn parse_args() -> Result<Config,Error> {
                              nick: nick, user: user, real: real, autojoin: channels });
     }
 
+    let config_dir = path.dir_path();
+    let plugin_dir = config_dir.join(plugin_dir);
     Ok(Config{
-        config_dir: path.dir_path(),
+        config_dir: config_dir,
         plugin_dir: plugin_dir,
         reconnect_time: reconnect,
         reconnect_backoff: backoff,
