@@ -6,10 +6,7 @@ use sync::MutexArc;
 
 /// Spawns a new (unwatched) task to handle stdin
 pub fn spawn_stdin_listener(arc: MutexArc<Option<Chan<Cmd>>>) {
-    let mut t = task::task();
-    t.unwatched();
-    t.name("stdin listener");
-    t.spawn(proc() {
+    task::task().named("stdin listener").spawn(proc() {
         handle_stdin(arc);
     });
 }

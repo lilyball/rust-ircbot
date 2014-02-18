@@ -115,10 +115,7 @@ fn connect(conf: &config::Config, arc: &sync::MutexArc<Option<Chan<Cmd>>>) -> co
     let mut listener = Listener::new();
     if listener.register(Interrupt).is_ok() {
         let cmd_chan2 = cmd_chan.clone();
-        let mut t = task::task();
-        t.unwatched();
-        t.name("signal handler");
-        t.spawn(proc() {
+        task::task().named("signal handler").spawn(proc() {
             let mut listener = listener;
             let cmd_chan = cmd_chan2;
             loop {
