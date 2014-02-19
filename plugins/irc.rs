@@ -34,11 +34,12 @@
 //! host: The hostname of the user, if any (optional, may be nil)
 
 use lua;
+use irc;
 use irc::conn;
 use irc::conn::{Conn, Event};
-use std::{libc, mem, ptr, str};
+use std::{libc, mem, ptr};
+use std::io::BufWriter;
 use std::iter::range_inclusive;
-use std::vec::MutableCloneableVector;
 
 static EVT_CONNECTED: &'static str = "-CONNECTED";
 static EVT_DISCONNECTED: &'static str = "-DISCONNECTED";
@@ -61,13 +62,13 @@ pub extern "C" fn lua_require(L: *mut lua::raw::lua_State) -> libc::c_int {
     L.newtable();
     L.registerlib(None, [
         ("addhandler", lua_addhandler),
-        //("host", lua_host),
-        //("me", lua_me),
+        ("host", lua_host),
+        ("me", lua_me),
         //("send_raw", lua_send_raw),
         //("set_nick", lua_set_nick),
         //("quit", lua_quit),
         ("privmsg", lua_privmsg),
-        //("notice",  lua_notice),
+        ("notice",  lua_notice),
         //("join", lua_join),
         //("quit", lua_quit)
     ]);
@@ -114,19 +115,16 @@ pub extern "C" fn lua_dispatch_event(L: *mut lua::raw::lua_State) -> libc::c_int
                     // construct our string on the stack
                     let mut buf = [0u8, ..64];
                     let n = {
-                        // sadly MemWriter can't take a stack buffer
-                        // so let's just create the string here
-                        // then copy it to the stack
-                        let s = code.to_str();
-                        buf.copy_from(s.as_bytes())
-                    };
-                    let s = match str::from_utf8(buf.slice_to(n)) {
-                        None => {
-                            L.errorstr("could not format IRCCode");
+                        let mut w = BufWriter::new(buf);
+                        match write!(&mut w, "{:03u}", code).and_then(|_| w.tell()) {
+                            Ok(n) => n,
+                            Err(e) => {
+                                drop(e);
+                                L.errorstr("could not format IRCCode");
+                            }
                         }
-                        Some(s) => s
                     };
-                    L.pushstring(s);
+                    L.pushbytes(buf.slice_to(n as uint));
                 }
                 conn::IRCCmd(ref cmd) => {
                     L.pushstring(cmd.as_slice());
@@ -167,21 +165,7 @@ pub extern "C" fn lua_dispatch_event(L: *mut lua::raw::lua_State) -> libc::c_int
                     L.pushnil();
                 }
                 Some(ref user) => {
-                    L.createtable(0, 4);
-                    L.pushbytes(user.raw());
-                    L.setfield(-2, "raw");
-                    L.pushbytes(user.nick());
-                    L.setfield(-2, "nick");
-                    match user.user() {
-                        None => L.pushnil(),
-                        Some(v) => L.pushbytes(v)
-                    }
-                    L.setfield(-2, "user");
-                    match user.user() {
-                        None => L.pushnil(),
-                        Some(v) => L.pushbytes(v)
-                    }
-                    L.setfield(-2, "host");
+                    push_user(&mut L, user);
                 }
             }
             // move sender just after the event name
@@ -235,6 +219,24 @@ pub extern "C" fn lua_dispatch_event(L: *mut lua::raw::lua_State) -> libc::c_int
     }
     // we're done
     0
+}
+
+fn push_user(L: &mut lua::State, user: &irc::User) {
+    L.createtable(0, 4);
+    L.pushbytes(user.raw());
+    L.setfield(-2, "raw");
+    L.pushbytes(user.nick());
+    L.setfield(-2, "nick");
+    match user.user() {
+        None => L.pushnil(),
+        Some(v) => L.pushbytes(v)
+    }
+    L.setfield(-2, "user");
+    match user.user() {
+        None => L.pushnil(),
+        Some(v) => L.pushbytes(v)
+    }
+    L.setfield(-2, "host");
 }
 
 // unsafe because the Conn isn't really 'static
@@ -314,6 +316,43 @@ extern "C" fn lua_addhandler(L: *mut lua::raw::lua_State) -> libc::c_int {
     0
 }
 
+// *** IRC package functions ***
+
+extern "C" fn lua_host(L: *mut lua::raw::lua_State) -> libc::c_int {
+    let mut L = unsafe { lua::State::from_lua_State(L) };
+
+    // 0 args
+
+    let conn = unsafe { getconn(&mut L) };
+
+    // construct our response on the stack
+    let mut buf = [0u8, ..64];
+    let n = {
+        let mut w = BufWriter::new(buf);
+        match write!(&mut w, "{}", conn.host()).and_then(|_| w.tell()) {
+            Ok(n) => n,
+            Err(e) => {
+                drop(e);
+                L.errorstr("could not format host");
+            }
+        }
+    };
+    L.pushbytes(buf.slice_to(n as uint));
+    1
+}
+
+extern "C" fn lua_me(L: *mut lua::raw::lua_State) -> libc::c_int {
+    let mut L = unsafe { lua::State::from_lua_State(L) };
+
+    // 0 args
+
+    let conn = unsafe { getconn(&mut L) };
+
+    // return a user table
+    push_user(&mut L, conn.me());
+    1
+}
+
 extern "C" fn lua_privmsg(L: *mut lua::raw::lua_State) -> libc::c_int {
     let mut L = unsafe { lua::State::from_lua_State(L) };
 
@@ -325,5 +364,19 @@ extern "C" fn lua_privmsg(L: *mut lua::raw::lua_State) -> libc::c_int {
     let conn = unsafe { getconn(&mut L) };
 
     conn.privmsg(dst, msg);
+    0
+}
+
+extern "C" fn lua_notice(L: *mut lua::raw::lua_State) -> libc::c_int {
+    let mut L = unsafe { lua::State::from_lua_State(L) };
+
+    // 2 args: dst, message
+
+    let dst = unsafe { L.checkbytes(1) };
+    let msg = unsafe { L.checkbytes(2) };
+
+    let conn = unsafe { getconn(&mut L) };
+
+    conn.notice(dst, msg);
     0
 }
