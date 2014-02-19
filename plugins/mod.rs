@@ -8,13 +8,22 @@ static ERROR_HANDLER: &'static str = "error_handler";
 
 /// Manages the Lua state for plugins
 pub struct PluginManager {
-    priv state: lua::State
+    priv state: lua::State,
+    priv plugin_dir: Path
 }
 
 impl PluginManager {
     /// Creates a new PluginManager and loads all the plugins
     pub fn new(conf: &config::Config) -> PluginManager {
-        let mut L = lua::State::new();
+        let L = lua::State::new();
+
+        let mut manager = PluginManager { state: L, plugin_dir: conf.plugin_dir.clone() };
+        manager.setup();
+        manager
+    }
+
+    fn setup(&mut self) {
+        let L = &mut self.state;
         L.openlibs();
 
         // create the error function and store it in the registry
@@ -37,10 +46,10 @@ impl PluginManager {
         }
         L.pop(1); // pop error handler
 
-        match io::fs::readdir(&conf.plugin_dir) {
+        match io::fs::readdir(&self.plugin_dir) {
             Err(e) => {
                 println!("Warning: Could not read plugin dir `{}': {}",
-                         conf.plugin_dir.display(), e);
+                         self.plugin_dir.display(), e);
             }
             Ok(paths) => {
                 for path in paths.iter() {
@@ -78,8 +87,27 @@ impl PluginManager {
                 }
             }
         }
+    }
 
-        PluginManager { state: L }
+    /// Reloads all plugins
+    pub fn reload_plugins(&mut self, conn: &mut irc::conn::Conn) {
+        // do this by setting up a brand new lua::State and re-initializing
+        self.state = lua::State::new();
+        self.setup();
+
+        // dispatch the RELOADED event
+        irc::activate_conn(&mut self.state, conn);
+        self.state.getfield(lua::REGISTRYINDEX, ERROR_HANDLER);
+        self.state.pushcfunction(irc::lua_dispatch_reloaded);
+        match self.state.pcall(0, 0, -2) {
+            Ok(()) => (),
+            Err(e) => {
+                println!("Error dispatching RELOADED event: {}: {}", e, self.state.describe(-1));
+                self.state.pop(1);
+            }
+        }
+        self.state.pop(1);
+        irc::deactivate_conn(&mut self.state);
     }
 
     /// Dispatches an IRC event

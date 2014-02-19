@@ -18,10 +18,11 @@
 //! Note: if the prefix was not provided for a given command, it will be given
 //! to Lua as nil. Otherwise, it will be a table representation of the User.
 //!
-//! There are 5 special events that can be registered:
+//! There are 6 special events that can be registered:
 //!
 //! irc.CONNECTED: No args
 //! irc.DISCONNECTED: No args
+//! irc.RELOADED: No args, sent when plugins are reloaded instead of CONNECTED
 //! irc.ACTION: Sender, destination, text
 //! irc.CTCP: Sender, CTCP command, destination, optionally text
 //! irc.CTCPREPLY: Sender, CTCP command, destination, optionally text
@@ -43,6 +44,7 @@ use std::iter::range_inclusive;
 
 static EVT_CONNECTED: &'static str = "-CONNECTED";
 static EVT_DISCONNECTED: &'static str = "-DISCONNECTED";
+static EVT_RELOADED: &'static str = "-RELOADED";
 static EVT_ACTION: &'static str = "-ACTION";
 static EVT_CTCP: &'static str = "-CTCP";
 static EVT_CTCPREPLY: &'static str = "-CTCPREPLY";
@@ -78,6 +80,8 @@ pub extern "C" fn lua_require(L: *mut lua::raw::lua_State) -> libc::c_int {
     L.setfield(-2, "CONNECTED");
     L.pushstring(EVT_DISCONNECTED);
     L.setfield(-2, "DISCONNECTED");
+    L.pushstring(EVT_RELOADED);
+    L.setfield(-2, "RELOADED");
     L.pushstring(EVT_ACTION);
     L.setfield(-2, "ACTION");
     L.pushstring(EVT_CTCP);
@@ -177,18 +181,23 @@ pub extern "C" fn lua_dispatch_event(L: *mut lua::raw::lua_State) -> libc::c_int
         }
     }
 
+    dispatch_event_inner(&mut L);
+    0
+}
+
+fn dispatch_event_inner(L: &mut lua::State) {
     // our event arguments are all on the stack
     let nargs = L.gettop();
     // get the handler list and call each one with a copy of the arguments
     L.pushlightuserdata(lua_addhandler as *mut libc::c_void);
     L.gettable(lua::REGISTRYINDEX);
     if !L.istable(-1) {
-        return 0; // no handlers
+        return; // no handlers
     }
     L.pushvalue(1); // event name
     L.gettable(-2);
     if !L.istable(-1) {
-        return 0;
+        return; // no handlers
     }
     L.pushnil(); // first key
     while L.next(-2) {
@@ -217,7 +226,18 @@ pub extern "C" fn lua_dispatch_event(L: *mut lua::raw::lua_State) -> libc::c_int
             }
         }
     }
-    // we're done
+}
+
+pub extern "C" fn lua_dispatch_reloaded(L: *mut lua::raw::lua_State) -> libc::c_int {
+    let mut L = unsafe { lua::State::from_lua_State(L) };
+
+    // 0 args
+
+    L.settop(0); // clear the stack
+
+    L.pushstring(EVT_RELOADED);
+
+    dispatch_event_inner(&mut L);
     0
 }
 

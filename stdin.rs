@@ -1,8 +1,9 @@
 /// Handle stdin commands
 
+use {Cmd, State};
 use std::{io,task};
-use irc::conn::{Conn, Cmd};
 use sync::MutexArc;
+use irc::conn::Conn;
 
 /// Spawns a new (unwatched) task to handle stdin
 pub fn spawn_stdin_listener(arc: MutexArc<Option<Chan<Cmd>>>) {
@@ -45,6 +46,7 @@ fn parse_line(line: &str) -> Option<Cmd> {
         "part" => cmd_part(line),
         "quit" => cmd_quit(line),
         "raw" => cmd_raw(line),
+        "reload" => cmd_reload(line),
         _ => None
     }
 }
@@ -67,7 +69,7 @@ fn cmd_msg(line: &str) -> Option<Cmd> {
 
     let dst = dst.to_owned();
     let msg = msg.to_owned();
-    Some(proc(conn: &mut Conn) {
+    Some(proc(conn: &mut Conn, _state: &mut State) {
         conn.privmsg(dst.as_bytes(), msg.as_bytes());
     })
 }
@@ -81,7 +83,7 @@ fn cmd_join(line: &str) -> Option<Cmd> {
 
     let chans = chans.to_owned();
     let keys = if line == "" { None } else { Some(line.to_owned()) };
-    Some(proc(conn: &mut Conn) {
+    Some(proc(conn: &mut Conn, _state: &mut State) {
         conn.join(chans.as_bytes(), keys.as_ref().map_or(&[], |s| s.as_bytes()));
     })
 }
@@ -94,7 +96,7 @@ fn cmd_part(line: &str) -> Option<Cmd> {
 
     let chans = chans.to_owned();
     let msg = if msg == "" { None } else { Some(msg.to_owned()) };
-    Some(proc(conn: &mut Conn) {
+    Some(proc(conn: &mut Conn, _state: &mut State) {
         conn.part(chans.as_bytes(), msg.as_ref().map_or(&[], |s| s.as_bytes()));
     })
 }
@@ -102,14 +104,21 @@ fn cmd_part(line: &str) -> Option<Cmd> {
 fn cmd_quit(line: &str) -> Option<Cmd> {
     let line = line.trim_left();
     let line = if line == "" { None } else { Some(line.to_owned()) };
-    Some(proc(conn: &mut Conn) {
+    Some(proc(conn: &mut Conn, _state: &mut State) {
         conn.quit(line.as_ref().map_or(&[], |s| s.as_bytes()));
     })
 }
 
 fn cmd_raw(line: &str) -> Option<Cmd> {
     let line = line.to_owned();
-    Some(proc(conn: &mut Conn) {
+    Some(proc(conn: &mut Conn, _state: &mut State) {
         conn.send_raw(line.as_bytes());
+    })
+}
+
+fn cmd_reload(_line: &str) -> Option<Cmd> {
+    Some(proc(conn: &mut Conn, state: &mut State) {
+        println!("Reloading plugins...");
+        state.plugins.reload_plugins(conn);
     })
 }

@@ -1,6 +1,8 @@
 #[crate_id="github.com/kballard/rust-ircbot#rustirc:0.1"];
 #[crate_type="bin"];
 
+#[allow(default_type_param_usage)];
+
 extern crate extra;
 extern crate lua;
 extern crate irc;
@@ -13,7 +15,7 @@ use std::io;
 use std::io::signal::{Listener, Interrupt};
 use std::task;
 use irc::conn;
-use irc::conn::{Conn, Line, Event, IRCCode, Cmd};
+use irc::conn::{Conn, Line, Event, IRCCode};
 
 pub mod config;
 pub mod stdin;
@@ -99,6 +101,13 @@ fn main() {
     unsafe { ::std::libc::exit(0); }
 }
 
+/// Payload for the Conn
+pub struct State {
+    plugins: plugins::PluginManager
+}
+
+pub type Cmd = conn::Cmd<State>;
+
 fn connect(conf: &config::Config, arc: &sync::MutexArc<Option<Chan<Cmd>>>) -> conn::Result {
     // TODO: eventually we should support multiple servers
     let server = &conf.servers[0];
@@ -123,7 +132,7 @@ fn connect(conf: &config::Config, arc: &sync::MutexArc<Option<Chan<Cmd>>>) -> co
             loop {
                 match listener.port.recv() {
                     Interrupt => {
-                        cmd_chan.try_send(proc(conn: &mut Conn) {
+                        cmd_chan.try_send(proc(conn: &mut Conn, _state: &mut State) {
                             conn.quit([]);
                         });
                         listener.unregister(Interrupt);
@@ -137,16 +146,15 @@ fn connect(conf: &config::Config, arc: &sync::MutexArc<Option<Chan<Cmd>>>) -> co
         warn!("Couldn't register ^C signal handler");
     }
 
-    let mut plugins = plugins::PluginManager::new(conf);
+    let state = State { plugins: plugins::PluginManager::new(conf) };
 
     let autojoin = server.autojoin.as_slice();
 
     println!("Connecting to {}...", opts.host);
-    irc::conn::connect(opts, |conn, event| handler(conn, event, autojoin, &mut plugins))
+    irc::conn::connect(opts, state, |conn, event, state| handler(conn, event, state, autojoin))
 }
 
-fn handler(conn: &mut Conn, event: Event, autojoin: &[config::Channel],
-           plugins: &mut plugins::PluginManager) {
+fn handler(conn: &mut Conn, event: Event, state: &mut State, autojoin: &[config::Channel]) {
     match event {
         irc::conn::Connected => println!("Connected"),
         irc::conn::Disconnected => println!("Disconnected"),
@@ -164,5 +172,5 @@ fn handler(conn: &mut Conn, event: Event, autojoin: &[config::Channel],
             }
         }
     }
-    plugins.dispatch_irc_event(conn, &event);
+    state.plugins.dispatch_irc_event(conn, &event);
 }
