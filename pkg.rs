@@ -1,12 +1,15 @@
 #[crate_id="github.com/kballard/rust-ircbot#rustirc:0.1"];
 #[crate_type="bin"];
 
+#[feature(phase)];
+
 #[allow(default_type_param_usage)];
 
+#[phase(syntax,link)]
+extern crate lua = "github.com/kballard/rust-lua#lua:0.1";
+extern crate irc = "github.com/kballard/rust-irclib#irc:0.1";
+extern crate toml = "github.com/mneumann/rust-toml#toml:0.1";
 extern crate extra;
-extern crate lua;
-extern crate irc;
-extern crate toml;
 extern crate getopts;
 extern crate sync;
 

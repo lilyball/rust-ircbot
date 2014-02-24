@@ -128,19 +128,19 @@ impl PluginManager {
     }
 }
 
-extern "C" fn lua_setup_packages(L: *mut lua::raw::lua_State) -> libc::c_int {
-    let mut L = unsafe { lua::State::from_lua_State(L) };
+lua_extern! {
+    unsafe fn lua_setup_packages(L: &mut lua::ExternState) -> i32 {
+        // insert our package loaders into package.preload
+        L.getglobal("package");
+        L.getfield(-1, "preload");
 
-    // insert our package loaders into package.preload
-    L.getglobal("package");
-    L.getfield(-1, "preload");
+        // irc
+        L.pushcfunction(irc::lua_require);
+        L.setfield(-2, "irc");
 
-    // irc
-    L.pushcfunction(irc::lua_require);
-    L.setfield(-2, "irc");
-
-    L.pop(2);
-    0
+        L.pop(2);
+        0
+    }
 }
 
 mod irc;

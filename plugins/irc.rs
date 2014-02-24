@@ -49,143 +49,153 @@ static EVT_ACTION: &'static str = "-ACTION";
 static EVT_CTCP: &'static str = "-CTCP";
 static EVT_CTCPREPLY: &'static str = "-CTCPREPLY";
 
-pub extern "C" fn lua_require(L: *mut lua::raw::lua_State) -> libc::c_int {
-    let mut L = unsafe { lua::State::from_lua_State(L) };
-    // 1 argument is passed: modname
+lua_extern_pub! {
+    unsafe fn lua_require(L: &mut lua::ExternState) -> i32 {
+        // 1 argument is passed: modname
 
-    // we're going to store the Conn in an Option in the registry
-    // the key for the registry is lua_require as a lightuserdata
-    L.pushlightuserdata(lua_require as *mut libc::c_void);
-    let connptr = L.newuserdata(mem::size_of::<*mut Conn>()) as *mut *mut Conn;
-    unsafe { *connptr = ptr::mut_null() };
-    L.settable(lua::REGISTRYINDEX);
+        // we're going to store the Conn in an Option in the registry
+        // the key for the registry is lua_require as a lightuserdata
+        L.pushlightuserdata(lua_require as *mut libc::c_void);
+        let connptr = L.newuserdata(mem::size_of::<*mut Conn>()) as *mut *mut Conn;
+        *connptr = ptr::mut_null();
+        L.settable(lua::REGISTRYINDEX);
 
-    // register our library functions
-    L.newtable();
-    L.registerlib(None, [
-        ("addhandler", lua_addhandler),
-        ("host", lua_host),
-        ("me", lua_me),
-        //("send_raw", lua_send_raw),
-        //("set_nick", lua_set_nick),
-        //("quit", lua_quit),
-        ("privmsg", lua_privmsg),
-        ("notice",  lua_notice),
-        //("join", lua_join),
-        //("quit", lua_quit)
-    ]);
+        // register our library functions
+        L.newtable();
+        L.registerlib(None, [
+            ("addhandler", lua_addhandler),
+            ("host", lua_host),
+            ("me", lua_me),
+            //("send_raw", lua_send_raw),
+            //("set_nick", lua_set_nick),
+            //("quit", lua_quit),
+            ("privmsg", lua_privmsg),
+            ("notice",  lua_notice),
+            //("join", lua_join),
+            //("quit", lua_quit)
+        ]);
 
-    // set a few constant values into the table
-    L.pushstring(EVT_CONNECTED);
-    L.setfield(-2, "CONNECTED");
-    L.pushstring(EVT_DISCONNECTED);
-    L.setfield(-2, "DISCONNECTED");
-    L.pushstring(EVT_RELOADED);
-    L.setfield(-2, "RELOADED");
-    L.pushstring(EVT_ACTION);
-    L.setfield(-2, "ACTION");
-    L.pushstring(EVT_CTCP);
-    L.setfield(-2, "CTCP");
-    L.pushstring(EVT_CTCPREPLY);
-    L.setfield(-2, "CTCPREPLY");
+        // set a few constant values into the table
+        L.pushstring(EVT_CONNECTED);
+        L.setfield(-2, "CONNECTED");
+        L.pushstring(EVT_DISCONNECTED);
+        L.setfield(-2, "DISCONNECTED");
+        L.pushstring(EVT_RELOADED);
+        L.setfield(-2, "RELOADED");
+        L.pushstring(EVT_ACTION);
+        L.setfield(-2, "ACTION");
+        L.pushstring(EVT_CTCP);
+        L.setfield(-2, "CTCP");
+        L.pushstring(EVT_CTCPREPLY);
+        L.setfield(-2, "CTCPREPLY");
 
-    1
-}
-
-pub extern "C" fn lua_dispatch_event(L: *mut lua::raw::lua_State) -> libc::c_int {
-    let mut L = unsafe { lua::State::from_lua_State(L) };
-
-    // 1 arg: event
-
-    let evtptr = L.touserdata(1) as *mut Event;
-    L.argcheck(evtptr.is_not_null(), 1, "expected Event");
-    let event = unsafe { &*evtptr };
-
-    L.settop(0); // clear the stack
-
-    // get the event name
-    match *event {
-        conn::Connected => {
-            L.pushstring(EVT_CONNECTED);
-        }
-        conn::Disconnected => {
-            L.pushstring(EVT_DISCONNECTED);
-        }
-        conn::LineReceived(ref line) => {
-            let conn::Line{ref command, ref args, ref prefix} = *line;
-
-            match *command {
-                conn::IRCCode(code) => {
-                    // construct our string on the stack
-                    let mut buf = [0u8, ..64];
-                    let n = {
-                        let mut w = BufWriter::new(buf);
-                        match write!(&mut w, "{:03u}", code).and_then(|_| w.tell()) {
-                            Ok(n) => n,
-                            Err(e) => {
-                                drop(e);
-                                L.errorstr("could not format IRCCode");
-                            }
-                        }
-                    };
-                    L.pushbytes(buf.slice_to(n as uint));
-                }
-                conn::IRCCmd(ref cmd) => {
-                    L.pushstring(cmd.as_slice());
-                }
-                conn::IRCAction(ref dst) => {
-                    L.pushstring(EVT_ACTION);
-                    L.pushbytes(dst.as_slice());
-                }
-                conn::IRCCTCP(ref cmd, ref dst) => {
-                    L.pushstring(EVT_CTCP);
-                    L.pushbytes(cmd.as_slice());
-                    L.pushbytes(dst.as_slice());
-                }
-                conn::IRCCTCPReply(ref cmd, ref dst) => {
-                    L.pushstring(EVT_CTCPREPLY);
-                    L.pushbytes(cmd.as_slice());
-                    L.pushbytes(dst.as_slice());
-                }
-            }
-
-            // ensure we actually have a handler for this event before proceeding
-            L.pushlightuserdata(lua_addhandler as *mut libc::c_void);
-            L.gettable(lua::REGISTRYINDEX);
-            if !L.istable(-1) {
-                return 0;
-            }
-            L.pushvalue(1); // event name
-            L.gettable(-2);
-            if !L.istable(-1) || L.objlen(-1) == 0 {
-                return 0;
-            }
-            // we have at least one handler; continue on
-            L.pop(2);
-
-            // construct the sender
-            match *prefix {
-                None => {
-                    L.pushnil();
-                }
-                Some(ref user) => {
-                    push_user(&mut L, user);
-                }
-            }
-            // move sender just after the event name
-            L.insert(2);
-            // add any arguments
-            for arg in args.iter() {
-                L.pushbytes(*arg);
-            }
-        }
+        1
     }
 
-    dispatch_event_inner(&mut L);
-    0
+    unsafe fn lua_dispatch_event(L: &mut lua::ExternState) -> i32 {
+        // 1 arg: event
+
+        let evtptr = L.touserdata(1) as *mut Event;
+        L.argcheck(evtptr.is_not_null(), 1, "expected Event");
+        let event = &*evtptr;
+
+        L.settop(0); // clear the stack
+
+        // get the event name
+        match *event {
+            conn::Connected => {
+                L.pushstring(EVT_CONNECTED);
+            }
+            conn::Disconnected => {
+                L.pushstring(EVT_DISCONNECTED);
+            }
+            conn::LineReceived(ref line) => {
+                let conn::Line{ref command, ref args, ref prefix} = *line;
+
+                match *command {
+                    conn::IRCCode(code) => {
+                        // construct our string on the stack
+                        let mut buf = [0u8, ..64];
+                        let n = {
+                            let mut w = BufWriter::new(buf);
+                            match write!(&mut w, "{:03u}", code).and_then(|_| w.tell()) {
+                                Ok(n) => n,
+                                Err(e) => {
+                                    drop(e);
+                                    L.errorstr("could not format IRCCode");
+                                }
+                            }
+                        };
+                        L.pushbytes(buf.slice_to(n as uint));
+                    }
+                    conn::IRCCmd(ref cmd) => {
+                        L.pushstring(cmd.as_slice());
+                    }
+                    conn::IRCAction(ref dst) => {
+                        L.pushstring(EVT_ACTION);
+                        L.pushbytes(dst.as_slice());
+                    }
+                    conn::IRCCTCP(ref cmd, ref dst) => {
+                        L.pushstring(EVT_CTCP);
+                        L.pushbytes(cmd.as_slice());
+                        L.pushbytes(dst.as_slice());
+                    }
+                    conn::IRCCTCPReply(ref cmd, ref dst) => {
+                        L.pushstring(EVT_CTCPREPLY);
+                        L.pushbytes(cmd.as_slice());
+                        L.pushbytes(dst.as_slice());
+                    }
+                }
+
+                // ensure we actually have a handler for this event before proceeding
+                L.pushlightuserdata(lua_addhandler as *mut libc::c_void);
+                L.gettable(lua::REGISTRYINDEX);
+                if !L.istable(-1) {
+                    return 0;
+                }
+                L.pushvalue(1); // event name
+                L.gettable(-2);
+                if !L.istable(-1) || L.objlen(-1) == 0 {
+                    return 0;
+                }
+                // we have at least one handler; continue on
+                L.pop(2);
+
+                // construct the sender
+                match *prefix {
+                    None => {
+                        L.pushnil();
+                    }
+                    Some(ref user) => {
+                        push_user(L, user);
+                    }
+                }
+                // move sender just after the event name
+                L.insert(2);
+                // add any arguments
+                for arg in args.iter() {
+                    L.pushbytes(*arg);
+                }
+            }
+        }
+
+        dispatch_event_inner(L);
+        0
+    }
+
+    unsafe fn lua_dispatch_reloaded(L: &mut lua::ExternState) -> i32 {
+        // 0 args
+
+        L.settop(0); // clear the stack
+
+        L.pushstring(EVT_RELOADED);
+
+        dispatch_event_inner(L);
+        0
+    }
 }
 
-fn dispatch_event_inner(L: &mut lua::State) {
+unsafe fn dispatch_event_inner(L: &mut lua::ExternState) {
     // our event arguments are all on the stack
     let nargs = L.gettop();
     // get the handler list and call each one with a copy of the arguments
@@ -228,20 +238,7 @@ fn dispatch_event_inner(L: &mut lua::State) {
     }
 }
 
-pub extern "C" fn lua_dispatch_reloaded(L: *mut lua::raw::lua_State) -> libc::c_int {
-    let mut L = unsafe { lua::State::from_lua_State(L) };
-
-    // 0 args
-
-    L.settop(0); // clear the stack
-
-    L.pushstring(EVT_RELOADED);
-
-    dispatch_event_inner(&mut L);
-    0
-}
-
-fn push_user(L: &mut lua::State, user: &irc::User) {
+unsafe fn push_user(L: &mut lua::ExternState, user: &irc::User) {
     L.createtable(0, 4);
     L.pushbytes(user.raw());
     L.setfield(-2, "raw");
@@ -260,7 +257,7 @@ fn push_user(L: &mut lua::State, user: &irc::User) {
 }
 
 // unsafe because the Conn isn't really 'static
-unsafe fn getconn(L: &mut lua::State) -> &'static mut Conn<'static> {
+unsafe fn getconn(L: &mut lua::ExternState) -> &'static mut Conn<'static> {
     L.pushlightuserdata(lua_require as *mut libc::c_void);
     L.gettable(lua::REGISTRYINDEX);
     let ptr = L.touserdata(-1) as *mut *mut Conn<'static>;
@@ -294,109 +291,101 @@ pub fn deactivate_conn(L: &mut lua::State) {
     unsafe { *ptr = ptr::mut_null() };
 }
 
-extern "C" fn lua_addhandler(L: *mut lua::raw::lua_State) -> libc::c_int {
-    let mut L = unsafe { lua::State::from_lua_State(L) };
+lua_extern! {
+    unsafe fn lua_addhandler(L: &mut lua::ExternState) -> i32 {
+        // 2 args: event, func
 
-    // 2 args: event, func
+        L.checkbytes(1);
+        L.checktype(2, lua::Type::Function);
 
-    unsafe { L.checkbytes(1) };
-    L.checktype(2, lua::Type::Function);
+        L.settop(2); // throw away any extra values
 
-    L.settop(2); // throw away any extra values
-
-    // get or create handler table; key is lua_addhandler
-    L.pushlightuserdata(lua_addhandler as *mut libc::c_void);
-    L.gettable(lua::REGISTRYINDEX);
-    if !L.istable(3) {
-        L.pop(1);
-        L.newtable();
+        // get or create handler table; key is lua_addhandler
         L.pushlightuserdata(lua_addhandler as *mut libc::c_void);
-        L.pushvalue(3);
-        L.settable(lua::REGISTRYINDEX);
-    }
-    // table is stack entry 3
+        L.gettable(lua::REGISTRYINDEX);
+        if !L.istable(3) {
+            L.pop(1);
+            L.newtable();
+            L.pushlightuserdata(lua_addhandler as *mut libc::c_void);
+            L.pushvalue(3);
+            L.settable(lua::REGISTRYINDEX);
+        }
+        // table is stack entry 3
 
-    // get or create the array
-    L.pushvalue(1); // copy the event to the top
-    L.gettable(3);
-    if !L.istable(4) {
-        L.pop(1);
-        L.newtable();
-        L.pushvalue(1); // copy event to top
-        L.pushvalue(4);
-        L.settable(3);
-    }
-    // array is stack entry 4
+        // get or create the array
+        L.pushvalue(1); // copy the event to the top
+        L.gettable(3);
+        if !L.istable(4) {
+            L.pop(1);
+            L.newtable();
+            L.pushvalue(1); // copy event to top
+            L.pushvalue(4);
+            L.settable(3);
+        }
+        // array is stack entry 4
 
-    let len = L.objlen(4); // get table length
-    L.pushinteger(len as int + 1);
-    L.pushvalue(2); // copy function to top
-    L.settable(4); // set ary[len+1]=func
-    // and return
-    0
-}
+        let len = L.objlen(4); // get table length
+        L.pushinteger(len as int + 1);
+        L.pushvalue(2); // copy function to top
+        L.settable(4); // set ary[len+1]=func
+        // and return
+        0
+    }
 
 // *** IRC package functions ***
 
-extern "C" fn lua_host(L: *mut lua::raw::lua_State) -> libc::c_int {
-    let mut L = unsafe { lua::State::from_lua_State(L) };
+    unsafe fn lua_host(L: &mut lua::ExternState) -> i32 {
+        // 0 args
 
-    // 0 args
+        let conn = getconn(L);
 
-    let conn = unsafe { getconn(&mut L) };
-
-    // construct our response on the stack
-    let mut buf = [0u8, ..64];
-    let n = {
-        let mut w = BufWriter::new(buf);
-        match write!(&mut w, "{}", conn.host()).and_then(|_| w.tell()) {
-            Ok(n) => n,
-            Err(e) => {
-                drop(e);
-                L.errorstr("could not format host");
+        // construct our response on the stack
+        let mut buf = [0u8, ..64];
+        let n = {
+            let mut w = BufWriter::new(buf);
+            match write!(&mut w, "{}", conn.host()).and_then(|_| w.tell()) {
+                Ok(n) => n,
+                Err(e) => {
+                    drop(e);
+                    L.errorstr("could not format host");
+                }
             }
-        }
-    };
-    L.pushbytes(buf.slice_to(n as uint));
-    1
-}
+        };
+        L.pushbytes(buf.slice_to(n as uint));
+        1
+    }
 
-extern "C" fn lua_me(L: *mut lua::raw::lua_State) -> libc::c_int {
-    let mut L = unsafe { lua::State::from_lua_State(L) };
+    unsafe fn lua_me(L: &mut lua::ExternState) -> i32 {
+        // 0 args
 
-    // 0 args
+        let conn = getconn(L);
 
-    let conn = unsafe { getconn(&mut L) };
+        // return a user table
+        push_user(L, conn.me());
+        1
+    }
 
-    // return a user table
-    push_user(&mut L, conn.me());
-    1
-}
+    unsafe fn lua_privmsg(L: &mut lua::ExternState) -> i32 {
+        // 2 args: dst, message
 
-extern "C" fn lua_privmsg(L: *mut lua::raw::lua_State) -> libc::c_int {
-    let mut L = unsafe { lua::State::from_lua_State(L) };
+        let dst = L.checkbytes(1);
+        let msg = L.checkbytes(2);
 
-    // 2 args: dst, message
+        let conn = getconn(L);
 
-    let dst = unsafe { L.checkbytes(1) };
-    let msg = unsafe { L.checkbytes(2) };
+        conn.privmsg(dst, msg);
+        0
+    }
 
-    let conn = unsafe { getconn(&mut L) };
+    unsafe fn lua_notice(L: &mut lua::ExternState) -> i32 {
+        // 2 args: dst, message
 
-    conn.privmsg(dst, msg);
-    0
-}
+        let dst = L.checkbytes(1);
+        let msg = L.checkbytes(2);
 
-extern "C" fn lua_notice(L: *mut lua::raw::lua_State) -> libc::c_int {
-    let mut L = unsafe { lua::State::from_lua_State(L) };
+        let conn = getconn(L);
 
-    // 2 args: dst, message
-
-    let dst = unsafe { L.checkbytes(1) };
-    let msg = unsafe { L.checkbytes(2) };
-
-    let conn = unsafe { getconn(&mut L) };
-
-    conn.notice(dst, msg);
-    0
+        conn.notice(dst, msg);
+        0
+    }
 }

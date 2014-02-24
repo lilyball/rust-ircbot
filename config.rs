@@ -130,7 +130,7 @@ pub fn parse_args() -> Result<Config,Error> {
                            .map(|s| s.clone()).unwrap_or_else(|| ~"Rust IRC Bot");
 
     let mut servers = ~[];
-    let server_list = match root.lookup_key("servers").and_then(|v| v.get_table_array()) {
+    let server_list = match root.lookup("servers").and_then(|v| v.get_table_array()) {
         None => {
             let _ = writeln!(&mut io::stderr(), "error: at least one server must be defined");
             return Err(ErrBadConfig);
@@ -138,7 +138,7 @@ pub fn parse_args() -> Result<Config,Error> {
         Some(ary) => ary.as_slice()
     };
     for elem in server_list.iter() {
-        let name = match elem.lookup_key("name").and_then(|v| v.get_str()) {
+        let name = match elem.lookup("name").and_then(|v| v.get_str()) {
             None => {
                 let _ = writeln!(&mut io::stderr(),
                                  "error: server entry missing required 'name' key");
@@ -146,7 +146,7 @@ pub fn parse_args() -> Result<Config,Error> {
             }
             Some(s) => s.clone()
         };
-        let server = match elem.lookup_key("server").and_then(|v| v.get_str()) {
+        let server = match elem.lookup("server").and_then(|v| v.get_str()) {
             None => {
                 let _ = writeln!(&mut io::stderr(),
                                  "error: server entry missing required 'server' key");
@@ -154,13 +154,13 @@ pub fn parse_args() -> Result<Config,Error> {
             }
             Some(s) => s.clone()
         };
-        let use_ssl = elem.lookup_key("use_ssl").and_then(|v| v.get_bool()).unwrap_or(false);
+        let use_ssl = elem.lookup("use_ssl").and_then(|v| v.get_bool()).unwrap_or(false);
         if use_ssl {
             let _ = writeln!(&mut io::stderr(), "error: use_ssl is not currently implemented");
             return Err(ErrBadConfig);
         }
         let default_port = if use_ssl { 6697 } else { 6667 };
-        let port = match elem.lookup_key("port").and_then(|v| v.get_int()).unwrap_or(default_port)
+        let port = match elem.lookup("port").and_then(|v| v.get_int()).unwrap_or(default_port)
                              .to_u16() {
             None => {
                 let _ = writeln!(&mut io::stderr(), "error: port is out of range");
@@ -168,14 +168,14 @@ pub fn parse_args() -> Result<Config,Error> {
             }
             Some(p) => p
         };
-        let nick = elem.lookup_key("nick").and_then(|v| v.get_str()).map(|s| s.clone())
+        let nick = elem.lookup("nick").and_then(|v| v.get_str()).map(|s| s.clone())
                        .unwrap_or_else(|| default_nick.clone());
-        let user = elem.lookup_key("user").and_then(|v| v.get_str()).map(|s| s.clone())
+        let user = elem.lookup("user").and_then(|v| v.get_str()).map(|s| s.clone())
                        .unwrap_or_else(|| default_user.clone());
-        let real = elem.lookup_key("real").and_then(|v| v.get_str()).map(|s| s.clone())
+        let real = elem.lookup("real").and_then(|v| v.get_str()).map(|s| s.clone())
                        .unwrap_or_else(|| default_real.clone());
         let mut channels = ~[];
-        match elem.lookup_key("autojoin").and_then(|v| v.get_vec()) {
+        match elem.lookup("autojoin").and_then(|v| v.get_vec()) {
             None => (),
             Some(v) => {
                 for val in v.iter() {
