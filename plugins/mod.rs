@@ -1,5 +1,7 @@
 //! Plugin manager for Lua plugins
 
+#[allow(uppercase_variables)];
+
 use lua;
 use config;
 use std::{io, libc, str};

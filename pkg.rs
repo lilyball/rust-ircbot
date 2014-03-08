@@ -2,8 +2,7 @@
 #[crate_type="bin"];
 
 #[feature(phase)];
-
-#[allow(default_type_param_usage)];
+#[feature(default_type_params)];
 
 #[phase(syntax,link)]
 extern crate lua = "github.com/kballard/rust-lua#lua:0.1";
@@ -23,7 +22,7 @@ use irc::conn::{Conn, Line, Event, IRCCode};
 pub mod config;
 pub mod stdin;
 
-mod plugins;
+pub mod plugins;
 
 fn main() {
     let conf = match config::parse_args() {

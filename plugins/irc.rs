@@ -34,6 +34,8 @@
 //! user: The username of the user, if any (optional, may be nil)
 //! host: The hostname of the user, if any (optional, may be nil)
 
+#[allow(uppercase_variables)];
+
 use lua;
 use irc;
 use irc::conn;
