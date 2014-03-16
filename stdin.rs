@@ -6,15 +6,16 @@ use sync::MutexArc;
 use irc::conn::Conn;
 
 /// Spawns a new (unwatched) task to handle stdin
-pub fn spawn_stdin_listener(arc: MutexArc<Option<Chan<Cmd>>>) {
+pub fn spawn_stdin_listener(arc: MutexArc<Option<Sender<Cmd>>>) {
     task::task().named("stdin listener").spawn(proc() {
         handle_stdin(arc);
     });
 }
 
-fn handle_stdin(arc: MutexArc<Option<Chan<Cmd>>>) {
+fn handle_stdin(arc: MutexArc<Option<Sender<Cmd>>>) {
     let mut stdin = io::BufferedReader::new(io::stdin());
     for line in stdin.lines() {
+        let line = line.unwrap(); // ignore error handling
         match parse_line(line) {
             None => (),
             Some(cmd) => {

@@ -8,7 +8,8 @@
 extern crate lua = "github.com/kballard/rust-lua#lua:0.1";
 extern crate irc = "github.com/kballard/rust-irclib#irc:0.1";
 extern crate toml = "github.com/mneumann/rust-toml#toml:0.1";
-extern crate extra;
+#[phase(syntax,link)]
+extern crate log;
 extern crate getopts;
 extern crate sync;
 
@@ -110,7 +111,7 @@ pub struct State {
 
 pub type Cmd = conn::Cmd<State>;
 
-fn connect(conf: &config::Config, arc: &sync::MutexArc<Option<Chan<Cmd>>>) -> conn::Result {
+fn connect(conf: &config::Config, arc: &sync::MutexArc<Option<Sender<Cmd>>>) -> conn::Result {
     // TODO: eventually we should support multiple servers
     let server = &conf.servers[0];
     let mut opts = irc::conn::Options::new(server.host, server.port);
@@ -118,23 +119,23 @@ fn connect(conf: &config::Config, arc: &sync::MutexArc<Option<Chan<Cmd>>>) -> co
     opts.user = server.user.as_slice();
     opts.real = server.real.as_slice();
 
-    let (cmd_port, cmd_chan) = Chan::new();
-    opts.commands = Some(cmd_port);
+    let (cmd_tx, cmd_rx) = channel();
+    opts.commands = Some(cmd_rx);
 
     // give stdin the new channel
-    arc.access(|c| *c = Some(cmd_chan.clone()));
+    arc.access(|c| *c = Some(cmd_tx.clone()));
 
     // intercept ^C and use it to quit gracefully
     let mut listener = Listener::new();
     if listener.register(Interrupt).is_ok() {
-        let cmd_chan2 = cmd_chan.clone();
+        let cmd_tx2 = cmd_tx.clone();
         task::task().named("signal handler").spawn(proc() {
             let mut listener = listener;
-            let cmd_chan = cmd_chan2;
+            let cmd_tx = cmd_tx2;
             loop {
-                match listener.port.recv() {
+                match listener.rx.recv() {
                     Interrupt => {
-                        cmd_chan.try_send(proc(conn: &mut Conn, _state: &mut State) {
+                        cmd_tx.try_send(proc(conn: &mut Conn, _state: &mut State) {
                             conn.quit([]);
                         });
                         listener.unregister(Interrupt);
